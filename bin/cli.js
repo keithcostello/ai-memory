@@ -31,13 +31,14 @@ const packageRoot = join(__dirname, '..');
  * Parse command-line arguments manually (no external dependencies).
  *
  * @param {string[]} argv - process.argv
- * @returns {{ command: string, flags: Set<string> }}
+ * @returns {{ command: string, flags: Set<string>, rest: string[] }}
  * @throws {never} Does not throw
  */
 function parseArgs(argv) {
   // Skip 'node' and script path
   const args = argv.slice(2);
   const flags = new Set();
+  const rest = [];
   let command = '';
 
   for (const arg of args) {
@@ -50,6 +51,8 @@ function parseArgs(argv) {
       }
     } else if (!command) {
       command = arg.toLowerCase();
+    } else {
+      rest.push(arg);
     }
   }
 
@@ -57,7 +60,7 @@ function parseArgs(argv) {
   if (!command && flags.has('v')) command = 'version';
   if (!command && flags.has('h')) command = 'help';
 
-  return { command, flags };
+  return { command, flags, rest };
 }
 
 /**
@@ -90,20 +93,26 @@ Usage:
   ai-memory <command> [options]
 
 Commands:
-  init      Scaffold the memory system into the current workspace
-  status    Report memory system health (file sizes, tokens, staleness)
-  archive   Archive old logs and completed sprint files
-  help      Show this help message
-  version   Show package version
+  init         Scaffold the memory system into the current workspace
+  status       Report memory system health (file sizes, tokens, staleness)
+  archive      Archive old logs and completed sprint files
+  completions  Output shell completion script (bash, zsh, fish)
+  help         Show this help message
+  version      Show package version
 
 Options:
-  --force   Overwrite existing files during init
+  --force    Overwrite existing files during init
+  --dry-run  Show what archive would do without writing (archive only)
+  --json     Output status as JSON (status only)
 
 Examples:
-  npx ai-memory init          # Set up memory system
-  npx ai-memory init --force  # Overwrite existing files
-  npx ai-memory status        # Check memory health
-  npx ai-memory archive       # Clean up old logs
+  npx ai-memory init              # Set up memory system
+  npx ai-memory init --force     # Overwrite existing files
+  npx ai-memory status            # Check memory health
+  npx ai-memory status --json     # JSON output
+  npx ai-memory archive           # Clean up old logs
+  npx ai-memory archive --dry-run # Preview archive without changes
+  npx ai-memory completions bash  # Add to ~/.bashrc
 
 Documentation: https://github.com/keithcostello/ai-memory
 `.trim());
@@ -114,8 +123,36 @@ Documentation: https://github.com/keithcostello/ai-memory
  *
  * @throws {Error} Re-thrown from command handlers; also from dynamic imports
  */
+/**
+ * Output shell completion script.
+ *
+ * @param {string} shell - One of 'bash', 'zsh', 'fish'
+ * @returns {void}
+ */
+function outputCompletions(shell) {
+  if (shell === 'bash') {
+    console.log(`# Bash completion for ai-memory
+complete -W "init status archive help version completions --force --dry-run --json" ai-memory`);
+  } else if (shell === 'zsh') {
+    console.log(`# Zsh completion for ai-memory
+_ai_memory() {
+  _values "ai-memory command" \\
+    "init" "status" "archive" "help" "version" "completions"
+  _values "ai-memory flag" \\
+    "--force" "--dry-run" "--json"
+}
+compdef _ai_memory ai-memory`);
+  } else {
+    console.log(`# Fish completion for ai-memory
+complete -c ai-memory -a "init status archive help version completions"
+complete -c ai-memory -l force -d "Overwrite existing files during init"
+complete -c ai-memory -l dry-run -d "Preview archive without writing"
+complete -c ai-memory -l json -d "Output status as JSON"`);
+  }
+}
+
 async function main() {
-  const { command, flags } = parseArgs(process.argv);
+  const { command, flags, rest } = parseArgs(process.argv);
 
   switch (command) {
     case 'init': {
@@ -125,12 +162,22 @@ async function main() {
     }
     case 'status': {
       const { run } = await import('../src/commands/status.js');
-      await run();
+      await run({ json: flags.has('json') });
       break;
     }
     case 'archive': {
       const { run } = await import('../src/commands/archive.js');
-      await run();
+      await run({ dryRun: flags.has('dry-run') });
+      break;
+    }
+    case 'completions': {
+      const shell = (rest[0] || 'bash').toLowerCase();
+      if (!['bash', 'zsh', 'fish'].includes(shell)) {
+        console.error(`Unknown shell: "${shell}". Use bash, zsh, or fish.\n`);
+        process.exitCode = 1;
+      } else {
+        outputCompletions(shell);
+      }
       break;
     }
     case 'version':
@@ -145,7 +192,8 @@ async function main() {
     default: {
       // Sanitize command for terminal output (strip non-printable characters)
       const safeCommand = command.replace(/[^\x20-\x7E]/g, '');
-      console.error(`Unknown command: "${safeCommand}"\n`);
+      const display = safeCommand || '(unrecognizable input)';
+      console.error(`Unknown command: "${display}"\n`);
       showHelp();
       process.exitCode = 1;
       break;

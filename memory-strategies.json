@@ -1,0 +1,6 @@
+{
+  "log_retention_days": 14,
+  "archive_completed_sprints": true,
+  "warn_tier1_tokens": 4000,
+  "warn_log_lines": 500
+}

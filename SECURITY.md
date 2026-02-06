@@ -14,6 +14,7 @@ ai-memory is a **local development CLI** that scaffolds and manages a persistent
 ### Path Traversal Protection
 
 - **`resolveMemoryPath`** (paths.js) validates that resolved paths stay within the project root. Paths like `../../etc/passwd` throw an error.
+- **`ensureDir`** (files.js) accepts an optional `projectRoot` parameter; when provided, validates that the directory path is contained within the project root before creating.
 - All command modules construct paths using `path.join(projectRoot, ...)` with the detected project root. User input is not used directly as filesystem paths.
 
 ### Symlink Handling
@@ -36,7 +37,7 @@ ai-memory is a **local development CLI** that scaffolds and manages a persistent
 
 ## Security Review (Phase 0c)
 
-Verified: All command modules use `path.join(projectRoot, ...)` for filesystem paths. No user-controlled input is used directly as a path. Path traversal, symlink handling, and input sanitization are implemented as documented above. Known limitations: ensureDir path containment (Phase 3), file size guard (Phase 2).
+Verified: All command modules use `path.join(projectRoot, ...)` for filesystem paths. No user-controlled input is used directly as a path. Path traversal, symlink handling, and input sanitization are implemented as documented above. File size guard (10 MB limit before full-file read) is implemented in `getFileStats`. `ensureDir` path containment is implemented via optional `projectRoot` parameter (archive and init pass it).
 
 ## Reporting
 

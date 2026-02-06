@@ -141,3 +141,43 @@ describe('archive - atomic writes', () => {
     assert.equal(readFileSync(p, 'utf8'), 'new');
   });
 });
+
+describe('archive - dry-run', () => {
+  let tempDir;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+    ensureDir(join(tempDir, 'memory'));
+    ensureDir(join(tempDir, 'memory', 'archive'));
+  });
+
+  afterEach(() => {
+    if (tempDir) removeTempDir(tempDir);
+  });
+
+  it('does not change files when --dry-run', async () => {
+    const logPath = join(tempDir, 'memory', 'GLOBAL_DAILY_LOG.md');
+    createTestLog(logPath, [
+      { date: '2020-01-01', project: 'old', summary: 'Old entry', completed: 'Yes' },
+      { date: '2026-02-06', project: 'recent', summary: 'Recent', completed: 'Yes' },
+    ]);
+    writeFileSync(join(tempDir, 'memory-strategies.json'), JSON.stringify({
+      log_retention_days: 365,
+      archive_completed_sprints: false,
+    }));
+
+    const contentBefore = readFileSync(logPath, 'utf8');
+
+    const { run } = await import('../src/commands/archive.js');
+    const origCwd = process.cwd();
+    try {
+      process.chdir(tempDir);
+      await run({ dryRun: true });
+    } finally {
+      process.chdir(origCwd);
+    }
+
+    const contentAfter = readFileSync(logPath, 'utf8');
+    assert.equal(contentBefore, contentAfter, 'Log file should be unchanged');
+  });
+});

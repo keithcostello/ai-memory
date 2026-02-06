@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "strict": true,
+    "moduleResolution": "node16"
+  },
+  "include": ["bin/**/*.js", "src/**/*.js"]
+}

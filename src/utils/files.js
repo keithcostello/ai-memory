@@ -9,7 +9,9 @@
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync, lstatSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, relative } from 'node:path';
+
+import { resolveMemoryPath } from './paths.js';
 import { randomBytes } from 'node:crypto';
 
 /**
@@ -148,11 +150,20 @@ export function copyTemplate(templatePath, targetPath, overwrite = false) {
 /**
  * Ensure a directory exists, creating it recursively if needed.
  *
+ * When projectRoot is provided, validates that dirPath is contained within
+ * projectRoot before creating (defense-in-depth against path traversal).
+ *
  * @param {string} dirPath - Absolute path to the directory
+ * @param {string} [projectRoot] - Optional project root; when provided, validates dirPath is contained before creating
  */
-export function ensureDir(dirPath) {
+export function ensureDir(dirPath, projectRoot = null) {
   if (typeof dirPath !== 'string' || dirPath.trim() === '') {
     throw new TypeError('ensureDir: dirPath must be a non-empty string');
+  }
+
+  if (projectRoot) {
+    const rel = relative(projectRoot, dirPath);
+    resolveMemoryPath(projectRoot, rel || '.');
   }
 
   if (!existsSync(dirPath)) {

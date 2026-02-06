@@ -7,6 +7,9 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+/** Maximum file size (10 MB) before we skip full-file analysis to avoid OOM. */
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 /**
  * Check whether a file exists at the given path.
  * Returns false on any error (e.g. permission denied); logs a warning.
@@ -24,6 +27,19 @@ export function fileExists(filePath) {
     console.warn(`fileExists failed: ${filePath}: ${err.message}`);
     return false;
   }
+}
+
+/**
+ * Count lines in a string. Handles trailing newline correctly:
+ * 'line1\nline2\n' returns 2, not 3. Empty string returns 0.
+ *
+ * @param {string} content - File or string content
+ * @returns {number}
+ */
+export function countLines(content) {
+  if (content === '') return 0;
+  const count = content.split('\n').length;
+  return content.endsWith('\n') ? count - 1 : count;
 }
 
 /**
@@ -51,6 +67,9 @@ export function dirExists(dirPath) {
  * Token estimation uses `Math.ceil(characters / 4)` as a rough heuristic.
  * This is imprecise but directionally correct for English text with markdown.
  *
+ * Files larger than 10 MB are not read; returns exists: true, lines: -1,
+ * warning: 'File too large to analyze' to avoid OOM.
+ *
  * On read error (e.g. permission denied), logs a warning and returns
  * empty stats (exists: false, lines: 0, etc.).
  *
@@ -61,7 +80,8 @@ export function dirExists(dirPath) {
  *   characters: number,
  *   estimatedTokens: number,
  *   lastModified: Date | null,
- *   age: string
+ *   age: string,
+ *   warning?: string
  * }}
  */
 export function getFileStats(filePath) {
@@ -79,9 +99,21 @@ export function getFileStats(filePath) {
   }
 
   try {
-    const content = readFileSync(filePath, 'utf8');
     const stat = statSync(filePath);
-    const lines = content.split('\n').length;
+    if (stat.size > MAX_FILE_SIZE_BYTES) {
+      return {
+        exists: true,
+        lines: -1,
+        characters: 0,
+        estimatedTokens: 0,
+        lastModified: stat.mtime,
+        age: formatAge(stat.mtime),
+        warning: 'File too large to analyze',
+      };
+    }
+
+    const content = readFileSync(filePath, 'utf8');
+    const lines = countLines(content);
     const characters = content.length;
     const estimatedTokens = Math.ceil(characters / 4);
     const lastModified = stat.mtime;
@@ -147,7 +179,8 @@ export function checkTier1Budget(projectRoot, budget = 4000) {
  *   estimatedTokens: number,
  *   needsArchive: boolean,
  *   warnLines: number,
- *   age: string
+ *   age: string,
+ *   warning?: string
  * }}
  */
 export function checkLogHealth(projectRoot, warnLines = 500) {
@@ -158,7 +191,7 @@ export function checkLogHealth(projectRoot, warnLines = 500) {
   const logPath = join(projectRoot, 'memory', 'GLOBAL_DAILY_LOG.md');
   const stats = getFileStats(logPath);
 
-  return {
+  const result = {
     exists: stats.exists,
     lines: stats.lines,
     estimatedTokens: stats.estimatedTokens,
@@ -166,6 +199,10 @@ export function checkLogHealth(projectRoot, warnLines = 500) {
     warnLines,
     age: stats.age,
   };
+  if (stats.warning) {
+    result.warning = stats.warning;
+  }
+  return result;
 }
 
 /**

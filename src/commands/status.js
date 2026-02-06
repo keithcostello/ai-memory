@@ -8,10 +8,10 @@
  */
 
 import { join } from 'node:path';
-import { readdirSync, existsSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 
 import { findProjectRoot } from '../utils/paths.js';
-import { fileExists, dirExists, getFileStats, checkTier1Budget, checkLogHealth } from '../utils/validation.js';
+import { fileExists, dirExists, checkTier1Budget, checkLogHealth } from '../utils/validation.js';
 
 /**
  * Staleness thresholds in milliseconds.
@@ -22,10 +22,13 @@ const STALE_WAITING_MS = 2 * 24 * 60 * 60 * 1000;    // 2 days
 /**
  * Run the status command. Prints a formatted health report to stdout.
  *
+ * @param {object} [options] - Command options
+ * @param {boolean} [options.json=false] - If true, output JSON instead of formatted text
  * @returns {Promise<void>}
  * @throws {TypeError} From findProjectRoot, checkTier1Budget, checkLogHealth if invalid input
  */
-export async function run() {
+export async function run(options = {}) {
+  const json = options.json ?? false;
   const cwd = process.cwd();
   const projectInfo = findProjectRoot(cwd);
 
@@ -45,11 +48,66 @@ export async function run() {
     return;
   }
 
+  // --- Tier 1 ---
+  const tier1 = checkTier1Budget(projectRoot);
+
+  if (json) {
+    const logHealth = checkLogHealth(projectRoot);
+    const rules = [
+      { path: '.cursor/rules/memory.mdc', label: 'always-on' },
+      { path: '.cursor/rules/memory-ops.mdc', label: 'agent-requested' },
+      { path: '.cursor/rules/memory-logs.mdc', label: 'on-demand' },
+    ];
+    const projects = listSubdirectories(join(projectRoot, 'memory', 'projects'));
+    const sprints = findSprintFiles(join(projectRoot, 'memory', 'workflows'));
+    const warnings = collectWarnings(tier1, logHealth, rules, projectRoot);
+
+    const tier1Json = {
+      files: tier1.files.map((f) => ({
+        relativePath: f.relativePath,
+        exists: f.stats.exists,
+        lines: f.stats.lines,
+        estimatedTokens: f.stats.estimatedTokens,
+        age: f.stats.age,
+        lastModified: f.stats.lastModified
+          ? f.stats.lastModified.toISOString()
+          : null,
+        warning: f.stats.warning ?? null,
+      })),
+      totalTokens: tier1.totalTokens,
+      overBudget: tier1.overBudget,
+      budget: tier1.budget,
+    };
+
+    const rulesJson = rules.map((r) => ({
+      path: r.path,
+      label: r.label,
+      exists: fileExists(join(projectRoot, r.path)),
+    }));
+
+    const output = {
+      tier1: tier1Json,
+      logHealth: {
+        exists: logHealth.exists,
+        lines: logHealth.lines,
+        estimatedTokens: logHealth.estimatedTokens,
+        needsArchive: logHealth.needsArchive,
+        warnLines: logHealth.warnLines,
+        age: logHealth.age,
+        warning: logHealth.warning ?? null,
+      },
+      rules: rulesJson,
+      projects,
+      sprints,
+      warnings,
+    };
+    console.log(JSON.stringify(output, null, 2));
+    return;
+  }
+
   console.log('ai-memory status report');
   console.log('========================\n');
 
-  // --- Tier 1 ---
-  const tier1 = checkTier1Budget(projectRoot);
   console.log('Tier 1 (Always-On):');
 
   for (const file of tier1.files) {
@@ -58,9 +116,10 @@ export async function run() {
       const staleWarning = isStale(file.relativePath, s.lastModified);
       const mark = staleWarning ? '⚠' : '✓';
       const staleText = staleWarning ? `  ⚠ ${staleWarning}` : '';
+      const linesDisplay = s.lines === -1 ? 'File too large' : s.lines + ' lines';
       console.log(
         `  ${mark} ${padRight(file.relativePath, 35)} ` +
-        `${padLeft(s.lines + ' lines', 10)}   ` +
+        `${padLeft(linesDisplay, 10)}   ` +
         `${padLeft('~' + s.estimatedTokens + ' tokens', 12)}   ` +
         `Modified: ${s.age}${staleText}`
       );
@@ -81,9 +140,10 @@ export async function run() {
 
   if (logHealth.exists) {
     const mark = logHealth.needsArchive ? '⚠' : '✓';
+    const linesDisplay = logHealth.lines === -1 ? 'File too large' : logHealth.lines + ' lines';
     console.log(
       `  ${mark} ${padRight('memory/GLOBAL_DAILY_LOG.md', 35)} ` +
-      `${padLeft(logHealth.lines + ' lines', 10)}   ` +
+      `${padLeft(linesDisplay, 10)}   ` +
       `${padLeft('~' + logHealth.estimatedTokens + ' tokens', 12)}   ` +
       `Modified: ${logHealth.age}`
     );
@@ -255,7 +315,13 @@ function collectWarnings(tier1, logHealth, rules, projectRoot) {
   for (const file of tier1.files) {
     if (!file.stats.exists) {
       warnings.push(`Missing Tier 1 file: ${file.relativePath}`);
+    } else if (file.stats.warning) {
+      warnings.push(`${file.relativePath}: ${file.stats.warning}`);
     }
+  }
+
+  if (logHealth.warning) {
+    warnings.push(`GLOBAL_DAILY_LOG.md: ${logHealth.warning}`);
   }
 
   for (const rule of rules) {

@@ -70,7 +70,7 @@ export async function run(options = {}) {
   for (const dir of MEMORY_DIRS) {
     const dirPath = join(projectRoot, dir);
     if (!dirExists(dirPath)) {
-      ensureDir(dirPath);
+      ensureDir(dirPath, projectRoot);
       console.log(`  + ${dir}/`);
     } else {
       console.log(`  ✓ ${dir}/ (exists)`);
@@ -115,7 +115,6 @@ export async function run(options = {}) {
     : '  ✓ .cursorignore: memory/archive/ already present');
 
   // Step 7: Print summary
-  const total = results.created + results.skipped + results.overwritten;
   console.log(`
 ${'='.repeat(60)}
 ✅ ai-memory initialized successfully

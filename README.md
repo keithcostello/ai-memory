@@ -67,7 +67,8 @@ Creates:
 Check memory system health.
 
 ```bash
-npx ai-memory status
+npx ai-memory status        # Human-readable report
+npx ai-memory status --json # JSON output for scripting
 ```
 
 Reports:
@@ -96,12 +97,23 @@ Tier 1 (Always-On):
 Archive old log entries and completed sprint files.
 
 ```bash
-npx ai-memory archive
+npx ai-memory archive           # Archive old entries
+npx ai-memory archive --dry-run # Preview what would be archived (no files changed)
 ```
 
 - Moves log entries older than the retention period (default: 14 days) to `memory/archive/YYYY-MM-DD/`
 - Archives sprint files marked with `## Status: COMPLETED` or `## Status: ARCHIVED`
 - Uses atomic writes to prevent data loss
+
+### `ai-memory completions`
+
+Output shell completion scripts for bash, zsh, or fish.
+
+```bash
+npx ai-memory completions bash >> ~/.bashrc
+npx ai-memory completions zsh  >> ~/.zshrc
+npx ai-memory completions fish >> ~/.config/fish/completions/ai-memory.fish
+```
 
 ### Other Commands
 
@@ -190,6 +202,14 @@ Yes — memory files are designed to be version-controlled. The `memory/archive/
 
 **How do I add a new project?**
 Create `memory/projects/<project-name>/WAITING_ON.md`. When you tell the AI you're working on that project, it will load the project-specific state.
+
+## Development
+
+```bash
+npm test              # Run tests
+npm run lint          # ESLint
+npm run test:coverage # Run tests with coverage (requires Node 22+)
+```
 
 ## Requirements
 

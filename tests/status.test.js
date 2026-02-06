@@ -114,6 +114,17 @@ describe('status - log health', () => {
     const result = checkLogHealth(tempDir, 500);
     assert.equal(result.needsArchive, false);
   });
+
+  it('returns warning and lines: -1 when log file exceeds 10 MB', () => {
+    const logPath = join(tempDir, 'memory', 'GLOBAL_DAILY_LOG.md');
+    writeFileSync(logPath, Buffer.alloc(10 * 1024 * 1024 + 1, 'x'));
+
+    const result = checkLogHealth(tempDir);
+    assert.equal(result.exists, true);
+    assert.equal(result.lines, -1);
+    assert.equal(result.warning, 'File too large to analyze');
+    assert.equal(result.needsArchive, false);
+  });
 });
 
 describe('status - staleness detection', () => {
@@ -132,5 +143,47 @@ describe('status - staleness detection', () => {
     writeFileSync(p, 'content');
     const stats = getFileStats(p);
     assert.ok(stats.age === 'just now' || stats.age.includes('m ago') || stats.age.includes('s ago'));
+  });
+});
+
+describe('status - JSON output', () => {
+  let tempDir;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+    mkdirSync(join(tempDir, 'memory', 'ai'), { recursive: true });
+  });
+
+  afterEach(() => {
+    if (tempDir) removeTempDir(tempDir);
+  });
+
+  it('outputs valid JSON with expected keys when --json', async () => {
+    writeFileSync(join(tempDir, 'package.json'), '{}');
+    writeFileSync(join(tempDir, 'memory', 'USER.md'), 'user');
+    writeFileSync(join(tempDir, 'memory', 'WAITING_ON.md'), 'waiting');
+    writeFileSync(join(tempDir, 'memory', 'ai', 'COMMON_MISTAKES.md'), 'mistakes');
+    writeFileSync(join(tempDir, 'memory', 'GLOBAL_DAILY_LOG.md'), '# Log\n---\n');
+
+    const { run } = await import('../src/commands/status.js');
+    const origCwd = process.cwd();
+    let output = '';
+    const origLog = console.log;
+    try {
+      process.chdir(tempDir);
+      console.log = (...args) => { output += args.join(' '); };
+      await run({ json: true });
+    } finally {
+      process.chdir(origCwd);
+      console.log = origLog;
+    }
+
+    const parsed = JSON.parse(output);
+    assert.ok(parsed.tier1, 'Should have tier1');
+    assert.ok(parsed.logHealth, 'Should have logHealth');
+    assert.ok(Array.isArray(parsed.rules), 'Should have rules array');
+    assert.ok(Array.isArray(parsed.projects), 'Should have projects array');
+    assert.ok(Array.isArray(parsed.sprints), 'Should have sprints array');
+    assert.ok(Array.isArray(parsed.warnings), 'Should have warnings array');
   });
 });

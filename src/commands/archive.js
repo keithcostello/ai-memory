@@ -12,7 +12,7 @@ import { readFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
 import { findProjectRoot } from '../utils/paths.js';
-import { fileExists, dirExists, getFileStats } from '../utils/validation.js';
+import { fileExists, dirExists, countLines } from '../utils/validation.js';
 import { safeWrite, ensureDir } from '../utils/files.js';
 
 /**
@@ -21,17 +21,30 @@ import { safeWrite, ensureDir } from '../utils/files.js';
 const DEFAULT_RETENTION_DAYS = 14;
 
 /**
+ * Default config when memory-strategies.json is missing or invalid.
+ */
+const DEFAULT_CONFIG = {
+  log_retention_days: DEFAULT_RETENTION_DAYS,
+  archive_completed_sprints: true,
+  warn_tier1_tokens: 4000,
+  warn_log_lines: 500,
+};
+
+/**
  * Run the archive command. Archives old log entries and completed sprints.
  *
  * Options: Uses memory-strategies.json for retention; falls back to defaults
  * on parse error (logs warning). Sprint processing errors are logged per
  * file/directory; does not abort the full run.
  *
+ * @param {object} [options] - Command options
+ * @param {boolean} [options.dryRun=false] - If true, log what would happen without writing files
  * @returns {Promise<void>}
  * @throws {TypeError} From findProjectRoot if cwd is invalid
  * @throws {Error} From safeWrite, ensureDir on FS failure
  */
-export async function run() {
+export async function run(options = {}) {
+  const dryRun = options.dryRun ?? false;
   const cwd = process.cwd();
   const projectInfo = findProjectRoot(cwd);
 
@@ -53,10 +66,10 @@ export async function run() {
 
   // Load retention config
   const config = loadConfig(projectRoot);
-  const retentionDays = config.log_retention_days || DEFAULT_RETENTION_DAYS;
+  const retentionDays = config.log_retention_days ?? DEFAULT_RETENTION_DAYS;
   const archiveSprintsEnabled = config.archive_completed_sprints !== false;
 
-  console.log(`ai-memory archive`);
+  console.log(`ai-memory archive${dryRun ? ' (dry-run)' : ''}`);
   console.log(`Retention: ${retentionDays} days\n`);
 
   let logResult = { archived: 0, beforeLines: 0, afterLines: 0 };
@@ -65,19 +78,19 @@ export async function run() {
   // Archive log entries
   const logPath = join(projectRoot, 'memory', 'GLOBAL_DAILY_LOG.md');
   if (fileExists(logPath)) {
-    logResult = archiveLogEntries(logPath, projectRoot, retentionDays);
+    logResult = archiveLogEntries(logPath, projectRoot, retentionDays, dryRun);
   } else {
     console.log('No GLOBAL_DAILY_LOG.md found — skipping log archive.\n');
   }
 
   // Archive completed sprints
   if (archiveSprintsEnabled) {
-    sprintResult = archiveCompletedSprints(projectRoot);
+    sprintResult = archiveCompletedSprints(projectRoot, dryRun);
   }
 
   // Print summary
   console.log(`\n${'='.repeat(50)}`);
-  console.log('Archive complete\n');
+  console.log(dryRun ? '[dry-run] Archive complete (no files changed)\n' : 'Archive complete\n');
 
   if (logResult.archived > 0) {
     console.log(
@@ -104,11 +117,12 @@ export async function run() {
  * @param {string} logPath - Absolute path to GLOBAL_DAILY_LOG.md
  * @param {string} projectRoot - Absolute path to project root
  * @param {number} retentionDays - Number of days to retain
+ * @param {boolean} [dryRun=false] - If true, skip writes and log what would happen
  * @returns {{ archived: number, beforeLines: number, afterLines: number }}
  */
-function archiveLogEntries(logPath, projectRoot, retentionDays) {
+function archiveLogEntries(logPath, projectRoot, retentionDays, dryRun = false) {
   const content = readFileSync(logPath, 'utf8');
-  const beforeLines = content.split('\n').length;
+  const beforeLines = countLines(content);
   const cutoff = getCutoffDate(retentionDays);
 
   // Parse into sections
@@ -142,27 +156,35 @@ function archiveLogEntries(logPath, projectRoot, retentionDays) {
   // Write archived entries to memory/archive/YYYY-MM-DD/
   for (const [dateStr, entries] of archiveByDate) {
     const archiveDir = join(projectRoot, 'memory', 'archive', dateStr);
-    ensureDir(archiveDir);
+    if (dryRun) {
+      console.log(`  [dry-run] Would archive: memory/archive/${dateStr}/GLOBAL_DAILY_LOG.md`);
+    } else {
+      ensureDir(archiveDir, projectRoot);
 
-    const archivePath = join(archiveDir, 'GLOBAL_DAILY_LOG.md');
-    let existingArchive = '';
-    if (existsSync(archivePath)) {
-      existingArchive = readFileSync(archivePath, 'utf8');
+      const archivePath = join(archiveDir, 'GLOBAL_DAILY_LOG.md');
+      let existingArchive = '';
+      if (existsSync(archivePath)) {
+        existingArchive = readFileSync(archivePath, 'utf8');
+      }
+
+      const archiveContent = entries.join('\n\n') +
+        (existingArchive ? '\n\n' + existingArchive : '');
+      safeWrite(archivePath, archiveContent);
+      console.log(`  → memory/archive/${dateStr}/GLOBAL_DAILY_LOG.md`);
     }
-
-    const archiveContent = entries.join('\n\n') +
-      (existingArchive ? '\n\n' + existingArchive : '');
-    safeWrite(archivePath, archiveContent);
-    console.log(`  → memory/archive/${dateStr}/GLOBAL_DAILY_LOG.md`);
   }
 
   // Rewrite the log file with only kept entries
   const newContent = keep.length > 0
     ? header + '\n\n' + keep.join('\n\n') + '\n'
     : header + '\n';
-  safeWrite(logPath, newContent);
+  if (dryRun) {
+    console.log('  [dry-run] Would rewrite GLOBAL_DAILY_LOG.md');
+  } else {
+    safeWrite(logPath, newContent);
+  }
 
-  const afterLines = newContent.split('\n').length;
+  const afterLines = countLines(newContent);
   return { archived: archivedCount, beforeLines, afterLines };
 }
 
@@ -252,9 +274,10 @@ function getCutoffDate(retentionDays) {
  * Archive sprint files that are marked as completed.
  *
  * @param {string} projectRoot
+ * @param {boolean} [dryRun=false] - If true, skip writes and log what would happen
  * @returns {{ archived: number }}
  */
-function archiveCompletedSprints(projectRoot) {
+function archiveCompletedSprints(projectRoot, dryRun = false) {
   const workflowsDir = join(projectRoot, 'memory', 'workflows');
   if (!dirExists(workflowsDir)) return { archived: 0 };
 
@@ -276,26 +299,32 @@ function archiveCompletedSprints(projectRoot) {
             const content = readFileSync(filePath, 'utf8');
 
             if (isSprintCompleted(content)) {
-              const dateStr = new Date().toISOString().slice(0, 10);
-              const archiveDir = join(
-                projectRoot, 'memory', 'archive', dateStr, 'workflows', proj.name
-              );
-              ensureDir(archiveDir);
+              if (dryRun) {
+                console.log(
+                  `  [dry-run] Would archive: memory/workflows/${proj.name}/${file.name}`
+                );
+              } else {
+                const dateStr = new Date().toISOString().slice(0, 10);
+                const archiveDir = join(
+                  projectRoot, 'memory', 'archive', dateStr, 'workflows', proj.name
+                );
+                ensureDir(archiveDir, projectRoot);
 
-              const archivePath = join(archiveDir, file.name);
-              safeWrite(archivePath, content);
+                const archivePath = join(archiveDir, file.name);
+                safeWrite(archivePath, content);
 
-              try {
-                unlinkSync(filePath);
-              } catch (unlinkErr) {
-                console.warn(
-                  `  ⚠ Archived but could not delete original: ${filePath} (${unlinkErr.message})`
+                try {
+                  unlinkSync(filePath);
+                } catch (unlinkErr) {
+                  console.warn(
+                    `  ⚠ Archived but could not delete original: ${filePath} (${unlinkErr.message})`
+                  );
+                }
+
+                console.log(
+                  `  → Archived: memory/workflows/${proj.name}/${file.name}`
                 );
               }
-
-              console.log(
-                `  → Archived: memory/workflows/${proj.name}/${file.name}`
-              );
               archived++;
             }
           } catch (err) {
@@ -336,12 +365,7 @@ function loadConfig(projectRoot) {
   const configPath = join(projectRoot, 'memory-strategies.json');
 
   if (!fileExists(configPath)) {
-    return {
-      log_retention_days: DEFAULT_RETENTION_DAYS,
-      archive_completed_sprints: true,
-      warn_tier1_tokens: 4000,
-      warn_log_lines: 500,
-    };
+    return { ...DEFAULT_CONFIG };
   }
 
   try {
@@ -357,25 +381,21 @@ function loadConfig(projectRoot) {
       : DEFAULT_RETENTION_DAYS;
 
     return {
+      ...DEFAULT_CONFIG,
       log_retention_days: retentionDays,
       archive_completed_sprints: parsed.archive_completed_sprints === true,
       warn_tier1_tokens: (typeof parsed.warn_tier1_tokens === 'number' && parsed.warn_tier1_tokens > 0)
         ? parsed.warn_tier1_tokens
-        : 4000,
+        : DEFAULT_CONFIG.warn_tier1_tokens,
       warn_log_lines: (typeof parsed.warn_log_lines === 'number' && parsed.warn_log_lines > 0)
         ? parsed.warn_log_lines
-        : 500,
+        : DEFAULT_CONFIG.warn_log_lines,
     };
   } catch (err) {
     console.warn(
       `Warning: Could not parse memory-strategies.json: ${err.message}\n` +
       `Using default settings.`
     );
-    return {
-      log_retention_days: DEFAULT_RETENTION_DAYS,
-      archive_completed_sprints: true,
-      warn_tier1_tokens: 4000,
-      warn_log_lines: 500,
-    };
+    return { ...DEFAULT_CONFIG };
   }
 }

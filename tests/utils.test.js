@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { findProjectRoot, resolveMemoryPath, MEMORY_DIRS, TEMPLATE_MAP } from '../src/utils/paths.js';
-import { fileExists, dirExists, getFileStats, checkTier1Budget, checkLogHealth, formatAge } from '../src/utils/validation.js';
+import { fileExists, dirExists, getFileStats, checkTier1Budget, checkLogHealth, formatAge, countLines } from '../src/utils/validation.js';
 import { safeWrite, safeAppend, copyTemplate, ensureDir, ensureLineInFile } from '../src/utils/files.js';
 
 /**
@@ -136,6 +136,27 @@ describe('TEMPLATE_MAP', () => {
 // validation.js
 // =============================================================================
 
+describe('countLines', () => {
+  it('returns 0 for empty string', () => {
+    assert.equal(countLines(''), 0);
+  });
+
+  it('returns correct count for content with trailing newline', () => {
+    assert.equal(countLines('line1\nline2\n'), 2);
+    assert.equal(countLines('a\n'), 1);
+  });
+
+  it('returns correct count for content without trailing newline', () => {
+    assert.equal(countLines('line1\nline2'), 2);
+    assert.equal(countLines('single'), 1);
+  });
+
+  it('returns 1 for single line', () => {
+    assert.equal(countLines('one'), 1);
+    assert.equal(countLines('one\n'), 1);
+  });
+});
+
 describe('fileExists', () => {
   let tempDir;
 
@@ -185,7 +206,7 @@ describe('getFileStats', () => {
 
     const stats = getFileStats(p);
     assert.equal(stats.exists, true);
-    assert.equal(stats.lines, 3);
+    assert.equal(stats.lines, countLines(content));
     assert.equal(stats.characters, content.length);
     assert.equal(stats.estimatedTokens, Math.ceil(content.length / 4));
     assert.ok(stats.lastModified instanceof Date);
@@ -197,6 +218,40 @@ describe('getFileStats', () => {
     assert.equal(stats.exists, false);
     assert.equal(stats.lines, 0);
     assert.equal(stats.estimatedTokens, 0);
+  });
+
+  it('counts lines correctly with trailing newline (no off-by-one)', () => {
+    const content = 'a\nb\nc\n';
+    const p = join(tempDir, 'trailing.md');
+    writeFileSync(p, content);
+
+    const stats = getFileStats(p);
+    assert.equal(stats.lines, 3, 'trailing newline should not inflate count');
+  });
+
+  it('returns lines: -1 and warning for file larger than 10 MB', () => {
+    const p = join(tempDir, 'huge.md');
+    writeFileSync(p, Buffer.alloc(10 * 1024 * 1024 + 1, 'x'));
+
+    const stats = getFileStats(p);
+    assert.equal(stats.exists, true);
+    assert.equal(stats.lines, -1);
+    assert.equal(stats.warning, 'File too large to analyze');
+    assert.equal(stats.estimatedTokens, 0);
+    assert.equal(stats.characters, 0);
+    assert.ok(stats.lastModified instanceof Date);
+  });
+
+  it('analyzes file at 10 MB boundary normally', () => {
+    const p = join(tempDir, 'boundary.md');
+    const content = 'x'.repeat(10 * 1024 * 1024);
+    writeFileSync(p, content);
+
+    const stats = getFileStats(p);
+    assert.equal(stats.exists, true);
+    assert.equal(stats.lines, 1);
+    assert.equal(stats.warning, undefined);
+    assert.equal(stats.characters, content.length);
   });
 });
 
@@ -303,6 +358,47 @@ describe('safeWrite', () => {
   it('throws on invalid input', () => {
     assert.throws(() => safeWrite('', 'content'), TypeError);
     assert.throws(() => safeWrite(join(tempDir, 'f.txt'), 123), TypeError);
+  });
+});
+
+describe('ensureDir', () => {
+  let tempDir;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+  });
+
+  after(() => {
+    if (tempDir) removeTempDir(tempDir);
+  });
+
+  it('rejects path escaping project root when projectRoot provided', () => {
+    const projectRoot = join(tempDir, 'project');
+    const outsidePath = join(tempDir, 'outside');
+    mkdirSync(projectRoot, { recursive: true });
+
+    assert.throws(
+      () => ensureDir(outsidePath, projectRoot),
+      /escapes project root/
+    );
+  });
+
+  it('succeeds when path is contained within projectRoot', () => {
+    const projectRoot = tempDir;
+    const dirPath = join(projectRoot, 'memory', 'nested');
+
+    ensureDir(dirPath, projectRoot);
+
+    assert.ok(existsSync(dirPath));
+    assert.ok(existsSync(join(dirPath, '..')));
+  });
+
+  it('succeeds without projectRoot (backward compat)', () => {
+    const dirPath = join(tempDir, 'no-root', 'nested');
+
+    ensureDir(dirPath);
+
+    assert.ok(existsSync(dirPath));
   });
 });
 

@@ -92,7 +92,6 @@ describe('CLI - unknown command', () => {
 
 describe('CLI - completions', () => {
   it('outputs bash completion script', () => {
-    assert.fail('UAT: temporary failure to verify pre-commit blocks');
     const result = execSync('node bin/cli.js completions bash', {
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
