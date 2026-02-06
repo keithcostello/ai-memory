@@ -1,0 +1,20 @@
+---
+description: "Access session history from GLOBAL_DAILY_LOG.md. Use when the user asks about past work, debugging history, or reviewing what was done previously."
+globs:
+alwaysApply: false
+---
+
+# Session History Access
+
+When you need to review past session history, read:
+
+[GLOBAL_DAILY_LOG.md](mdc:memory/GLOBAL_DAILY_LOG.md)
+@memory/GLOBAL_DAILY_LOG.md
+
+This file contains reverse-chronological session entries. Use it to:
+- Answer questions about what was done previously
+- Understand the timeline of a project
+- Debug by reviewing recent changes
+- Pick up context when the user references past work
+
+For archived history older than the retention period, check `memory/archive/`.

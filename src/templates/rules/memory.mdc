@@ -1,0 +1,56 @@
+---
+description: "AI Memory System - Injects persistent context from memory files into every prompt"
+globs: "*"
+alwaysApply: true
+---
+
+# AI Memory System — Persistent Context
+
+## Tier 1: Always-On Memory (loaded with every prompt)
+
+Read these files at the start of every session:
+
+[USER.md](mdc:memory/USER.md)
+@memory/USER.md
+
+[WAITING_ON.md](mdc:memory/WAITING_ON.md)
+@memory/WAITING_ON.md
+
+[COMMON_MISTAKES.md](mdc:memory/ai/COMMON_MISTAKES.md)
+@memory/ai/COMMON_MISTAKES.md
+
+## Memory Tier Reference
+
+- **Tier 1 (above)**: Always in context. These files are small and always loaded.
+- **Tier 2**: Session log at `memory/GLOBAL_DAILY_LOG.md` — reference when debugging history or reviewing past work. Access via `.cursor/rules/memory-logs.mdc`.
+- **Tier 3**: Project memory at `memory/projects/[name]/WAITING_ON.md` — load when working on a specific project. Project WAITING_ON overrides global WAITING_ON for that project's scope.
+- **Tier 4**: Sprint memory at `memory/workflows/[project]/[role]_sprint_[id].md` — agent-scoped, load only for active sprint work.
+
+## Precedence Rules
+
+- `USER.md`: Always active, never overridden
+- `COMMON_MISTAKES.md`: Always active, never overridden
+- `WAITING_ON.md`: Active by default. When a project-specific `WAITING_ON.md` exists AND the user has established project context, the project version takes precedence for state/blockers. Global WAITING_ON still provides cross-project context.
+
+## Behavioral Directives
+
+- NEVER auto-load Tier 3 or Tier 4 files without explicit user context
+- If unsure which project the user is working on, ASK
+- Project memory supplements global memory — only WAITING_ON state is overridden
+- If any memory file is missing, continue with available context. Do not error or halt.
+- Report missing files only if the user asks about memory status
+- Keep Tier 1 files concise. Total Tier 1 should stay under ~4,000 tokens.
+
+## Relationship with Cursor Memories
+
+- Cursor's auto-generated memories capture conversational patterns
+- This structured memory system tracks explicit project state, blockers, and corrections
+- When conflicts arise, prefer this structured memory over auto-generated memories
+- Do not duplicate information already captured by Cursor's native memory feature
+
+## Fallback: Manual Memory Loading
+
+If the file references above did not auto-load, read these files now:
+- memory/USER.md
+- memory/WAITING_ON.md
+- memory/ai/COMMON_MISTAKES.md

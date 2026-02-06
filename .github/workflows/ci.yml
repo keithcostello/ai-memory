@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Run tests
+        run: npm test
+
+      - name: Syntax check
+        run: |
+          node --check bin/cli.js
+          node --check src/utils/paths.js
+          node --check src/utils/validation.js
+          node --check src/utils/files.js
+          node --check src/commands/init.js
+          node --check src/commands/status.js
+          node --check src/commands/archive.js

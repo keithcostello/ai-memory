@@ -1,0 +1,81 @@
+---
+description: "Memory write protocols — how to update memory files after completing work. Load this rule when updating WAITING_ON.md, COMMON_MISTAKES.md, or GLOBAL_DAILY_LOG.md."
+globs:
+alwaysApply: false
+---
+
+# Memory Operations Protocol
+
+## When to Update Memory
+
+Update memory at these trigger points:
+- After completing a significant task or subtask
+- When the user explicitly asks you to save state
+- Before ending a session (if the user signals they're done)
+- When you discover a universal mistake pattern
+
+Do NOT update memory on every conversational turn. Only update when there is meaningful state change.
+
+## STANDARD_MEMORY_UPDATE
+
+When triggered, perform these updates:
+
+### 1. Update `memory/WAITING_ON.md`
+
+Replace the entire file content with current state:
+- What was just completed (brief)
+- What is currently in progress
+- What is blocked and why
+- Explicit next actions
+- Any decisions made this session
+
+### 2. Append to `memory/GLOBAL_DAILY_LOG.md`
+
+Add a new entry at the TOP of the file (newest first), below the header separator (`---`):
+
+```markdown
+## YYYY-MM-DD
+
+### [Project Name] — [Brief Summary]
+- **Completed**: What was done
+- **Deliverables**: Files created/modified
+- **Decisions**: Key decisions made
+- **Next**: What comes next
+```
+
+### 3. Update `memory/ai/COMMON_MISTAKES.md` (only when applicable)
+
+Add a new entry ONLY when you identify a universal pattern — something that would prevent the same class of mistake across projects. Format:
+
+```markdown
+### [SHORT_ID]: Brief title
+- **Mistake**: What went wrong
+- **Correction**: What to do instead
+- **Context**: When this applies
+```
+
+Keep this file under 15 entries. If at 15, remove the least relevant entry before adding.
+
+## Writing Rules
+
+- `GLOBAL_DAILY_LOG.md`: **Append-only**, newest entries at top
+- `WAITING_ON.md`: **Replace content** — this is current state, not history
+- `COMMON_MISTAKES.md`: **Add/remove entries** — curate, don't just accumulate
+- **NEVER** store secrets, credentials, API keys, or tokens in any memory file
+- **NEVER** store large code blocks in memory files — reference file paths instead
+- Keep all files concise. Memory is expensive context.
+
+## Project-Scoped Memory
+
+When working on a specific project with its own directory under `memory/projects/[name]/`:
+- Update the project's `WAITING_ON.md` instead of the global one for project-specific state
+- Still append to the global `GLOBAL_DAILY_LOG.md`
+- Still update global `COMMON_MISTAKES.md` for universal patterns
+
+## Archival
+
+Old log entries and completed sprint files can be archived:
+```
+npx ai-memory archive
+```
+This moves old entries to `memory/archive/YYYY-MM-DD/` per the retention config in `memory-strategies.json`.

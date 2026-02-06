@@ -1,0 +1,41 @@
+{
+  "name": "ai-memory",
+  "version": "1.0.0",
+  "description": "Scaffold a persistent AI memory system into any Cursor IDE workspace",
+  "license": "MIT",
+  "bin": {
+    "ai-memory": "./bin/cli.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "lint": "node --check bin/cli.js && node --check src/utils/paths.js && node --check src/utils/validation.js && node --check src/utils/files.js && node --check src/commands/init.js && node --check src/commands/status.js && node --check src/commands/archive.js"
+  },
+  "keywords": [
+    "cursor",
+    "ai",
+    "memory",
+    "context",
+    "rules",
+    "mdc",
+    "persistent",
+    "session"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keithcostello/ai-memory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/keithcostello/ai-memory/issues"
+  },
+  "homepage": "https://github.com/keithcostello/ai-memory#readme",
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ]
+}
