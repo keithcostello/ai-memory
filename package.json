@@ -12,7 +12,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "lint": "node --check bin/cli.js && node --check src/utils/paths.js && node --check src/utils/validation.js && node --check src/utils/files.js && node --check src/commands/init.js && node --check src/commands/status.js && node --check src/commands/archive.js"
+    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
+    "lint": "eslint bin/ src/",
+    "prepare": "husky"
   },
   "keywords": [
     "cursor",
@@ -37,5 +39,11 @@
     "src/",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "eslint": "^9.39.2",
+    "globals": "^17.3.0",
+    "husky": "^9.1.7"
+  }
 }
