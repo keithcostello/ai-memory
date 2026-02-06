@@ -9,6 +9,7 @@ import { join } from 'node:path';
 
 /**
  * Check whether a file exists at the given path.
+ * Returns false on any error (e.g. permission denied); logs a warning.
  *
  * @param {string} filePath - Absolute path to check
  * @returns {boolean}
@@ -19,13 +20,15 @@ export function fileExists(filePath) {
   }
   try {
     return existsSync(filePath) && statSync(filePath).isFile();
-  } catch {
+  } catch (err) {
+    console.warn(`fileExists failed: ${filePath}: ${err.message}`);
     return false;
   }
 }
 
 /**
  * Check whether a directory exists at the given path.
+ * Returns false on any error (e.g. permission denied); logs a warning.
  *
  * @param {string} dirPath - Absolute path to check
  * @returns {boolean}
@@ -36,7 +39,8 @@ export function dirExists(dirPath) {
   }
   try {
     return existsSync(dirPath) && statSync(dirPath).isDirectory();
-  } catch {
+  } catch (err) {
+    console.warn(`dirExists failed: ${dirPath}: ${err.message}`);
     return false;
   }
 }
@@ -46,6 +50,9 @@ export function dirExists(dirPath) {
  *
  * Token estimation uses `Math.ceil(characters / 4)` as a rough heuristic.
  * This is imprecise but directionally correct for English text with markdown.
+ *
+ * On read error (e.g. permission denied), logs a warning and returns
+ * empty stats (exists: false, lines: 0, etc.).
  *
  * @param {string} filePath - Absolute path to the file
  * @returns {{
@@ -81,7 +88,8 @@ export function getFileStats(filePath) {
     const age = formatAge(lastModified);
 
     return { exists: true, lines, characters, estimatedTokens, lastModified, age };
-  } catch {
+  } catch (err) {
+    console.warn(`getFileStats failed: ${filePath}: ${err.message}`);
     return empty;
   }
 }

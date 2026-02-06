@@ -28,6 +28,10 @@ const ROOT_MARKERS = ['.git', 'package.json'];
  * path containing the marker, or null if not found within
  * MAX_TRAVERSAL_DEPTH levels.
  *
+ * On permission denied or other FS error when checking a marker,
+ * skips that marker and continues. Logs at DEBUG level if
+ * process.env.DEBUG is set.
+ *
  * @param {string} startDir - Absolute path to start searching from
  * @returns {{ root: string, marker: string } | null}
  *   The project root path and which marker was found, or null
@@ -61,8 +65,10 @@ export function findProjectRoot(startDir) {
             return { root: current, marker };
           }
         }
-      } catch {
-        // Permission denied or other FS error — skip this marker
+      } catch (err) {
+        if (process.env.DEBUG) {
+          console.warn(`findProjectRoot: skip marker ${candidate}: ${err.message}`);
+        }
         continue;
       }
     }
@@ -83,11 +89,15 @@ export function findProjectRoot(startDir) {
  * Resolve a relative memory path against the project root.
  * Uses path.join() for cross-platform compatibility.
  *
+ * Security: Prevents directory traversal attacks. Throws if the
+ * resolved path escapes the project root (e.g. '../etc/passwd').
+ *
  * @param {string} projectRoot - Absolute path to the project root
  * @param {string} relativePath - Path relative to project root (e.g., 'memory/USER.md')
  * @returns {string} Absolute path
  *
  * @throws {TypeError} If either argument is not a non-empty string
+ * @throws {Error} If relativePath escapes project root
  */
 export function resolveMemoryPath(projectRoot, relativePath) {
   if (typeof projectRoot !== 'string' || projectRoot.trim() === '') {

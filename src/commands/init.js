@@ -19,9 +19,15 @@ const __dirname = dirname(__filename);
 const TEMPLATES_DIR = resolve(__dirname, '..', 'templates');
 
 /**
- * Run the init command.
+ * Run the init command. Scaffolds the memory system into the current workspace.
  *
- * @param {{ force?: boolean }} options
+ * If findProjectRoot returns null, scaffolds into cwd with a warning.
+ * Does not throw; logs errors to stderr and continues where possible.
+ *
+ * @param {{ force?: boolean }} [options={}] - force: overwrite existing files
+ * @returns {Promise<void>}
+ * @throws {TypeError} From findProjectRoot if cwd is invalid
+ * @throws {Error} From ensureDir, copyTemplate, ensureLineInFile on FS failure
  */
 export async function run(options = {}) {
   const force = Boolean(options.force);

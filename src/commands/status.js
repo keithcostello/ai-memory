@@ -2,6 +2,9 @@
  * @module commands/status
  * Report memory system health: file existence, sizes, token estimates,
  * staleness, budget checks, and active project/sprint detection.
+ *
+ * Output: Human-readable report to stdout. Uses safeReaddir for directory
+ * reads; on failure logs a warning and treats as empty (no throw).
  */
 
 import { join } from 'node:path';
@@ -17,7 +20,10 @@ const STALE_GENERAL_MS = 7 * 24 * 60 * 60 * 1000;   // 7 days
 const STALE_WAITING_MS = 2 * 24 * 60 * 60 * 1000;    // 2 days
 
 /**
- * Run the status command.
+ * Run the status command. Prints a formatted health report to stdout.
+ *
+ * @returns {Promise<void>}
+ * @throws {TypeError} From findProjectRoot, checkTier1Budget, checkLogHealth if invalid input
  */
 export async function run() {
   const cwd = process.cwd();
@@ -166,6 +172,22 @@ function isStale(relativePath, lastModified) {
 }
 
 /**
+ * Read directory contents, returning empty array on error.
+ * Logs a warning when read fails (e.g. permission denied).
+ *
+ * @param {string} dirPath - Absolute path to directory
+ * @returns {import('fs').Dirent[]}
+ */
+function safeReaddir(dirPath) {
+  try {
+    return readdirSync(dirPath, { withFileTypes: true });
+  } catch (err) {
+    console.warn(`Could not read directory: ${dirPath}: ${err.message}`);
+    return [];
+  }
+}
+
+/**
  * List immediate subdirectories of a path.
  *
  * @param {string} dirPath
@@ -174,14 +196,10 @@ function isStale(relativePath, lastModified) {
 function listSubdirectories(dirPath) {
   if (!dirExists(dirPath)) return [];
 
-  try {
-    return readdirSync(dirPath, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort();
-  } catch {
-    return [];
-  }
+  return safeReaddir(dirPath)
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .sort();
 }
 
 /**
@@ -194,24 +212,15 @@ function findSprintFiles(workflowsDir) {
   if (!dirExists(workflowsDir)) return [];
 
   const results = [];
-  try {
-    const projects = readdirSync(workflowsDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory());
+  const projects = safeReaddir(workflowsDir).filter((d) => d.isDirectory());
 
-    for (const proj of projects) {
-      const projDir = join(workflowsDir, proj.name);
-      try {
-        const files = readdirSync(projDir, { withFileTypes: true })
-          .filter((f) => f.isFile() && f.name.includes('_sprint_') && f.name.endsWith('.md'));
-        for (const f of files) {
-          results.push(`memory/workflows/${proj.name}/${f.name}`);
-        }
-      } catch {
-        // Skip unreadable project directories
-      }
+  for (const proj of projects) {
+    const projDir = join(workflowsDir, proj.name);
+    const files = safeReaddir(projDir)
+      .filter((f) => f.isFile() && f.name.includes('_sprint_') && f.name.endsWith('.md'));
+    for (const f of files) {
+      results.push(`memory/workflows/${proj.name}/${f.name}`);
     }
-  } catch {
-    // Skip unreadable workflows directory
   }
 
   return results.sort();

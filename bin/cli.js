@@ -13,6 +13,9 @@
  *   ai-memory version           Show package version
  *
  * Zero dependencies — uses only Node.js built-ins.
+ *
+ * Security: Unknown command strings are sanitized (strip non-printable chars
+ * via replace(/[^\x20-\x7E]/g, '')) before display to prevent terminal injection.
  */
 
 import { readFileSync } from 'node:fs';
@@ -29,6 +32,7 @@ const packageRoot = join(__dirname, '..');
  *
  * @param {string[]} argv - process.argv
  * @returns {{ command: string, flags: Set<string> }}
+ * @throws {never} Does not throw
  */
 function parseArgs(argv) {
   // Skip 'node' and script path
@@ -58,15 +62,17 @@ function parseArgs(argv) {
 
 /**
  * Read and return the package version from package.json.
+ * On read or parse failure, logs a warning to stderr and returns 'unknown'.
  *
- * @returns {string}
+ * @returns {string} Version string or 'unknown' on error
  */
 function getVersion() {
   try {
     const pkgPath = join(packageRoot, 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
     return pkg.version || 'unknown';
-  } catch {
+  } catch (err) {
+    console.warn(`Could not read package.json: ${err.message}`);
     return 'unknown';
   }
 }
@@ -104,7 +110,9 @@ Documentation: https://github.com/keithcostello/ai-memory
 }
 
 /**
- * Main entry point.
+ * Main entry point. Dispatches to command handlers.
+ *
+ * @throws {Error} Re-thrown from command handlers; also from dynamic imports
  */
 async function main() {
   const { command, flags } = parseArgs(process.argv);

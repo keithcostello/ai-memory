@@ -2,6 +2,10 @@
  * @module files
  * Safe file operations: atomic writes, directory creation,
  * template copying, and append-with-header for log files.
+ *
+ * Security: safeWrite refuses to write through symlinks. A TOCTOU race
+ * exists between the symlink check and the rename; this is documented
+ * as an acceptable risk for a local dev CLI. See SECURITY.md.
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync, lstatSync } from 'node:fs';
@@ -49,8 +53,8 @@ export function safeWrite(filePath, content) {
       if (existsSync(tmpPath)) {
         unlinkSync(tmpPath);
       }
-    } catch {
-      // Best-effort cleanup
+    } catch (cleanupErr) {
+      console.warn(`Could not remove temp file ${tmpPath}: ${cleanupErr.message}`);
     }
     throw new Error(`safeWrite: failed to write "${filePath}": ${err.message}`);
   }

@@ -9,7 +9,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 
 import { findProjectRoot } from '../utils/paths.js';
 import { fileExists, dirExists, getFileStats } from '../utils/validation.js';
@@ -21,7 +21,15 @@ import { safeWrite, ensureDir } from '../utils/files.js';
 const DEFAULT_RETENTION_DAYS = 14;
 
 /**
- * Run the archive command.
+ * Run the archive command. Archives old log entries and completed sprints.
+ *
+ * Options: Uses memory-strategies.json for retention; falls back to defaults
+ * on parse error (logs warning). Sprint processing errors are logged per
+ * file/directory; does not abort the full run.
+ *
+ * @returns {Promise<void>}
+ * @throws {TypeError} From findProjectRoot if cwd is invalid
+ * @throws {Error} From safeWrite, ensureDir on FS failure
  */
 export async function run() {
   const cwd = process.cwd();
@@ -290,16 +298,16 @@ function archiveCompletedSprints(projectRoot) {
               );
               archived++;
             }
-          } catch {
-            // Skip files that can't be read
+          } catch (err) {
+            console.warn(`  Warning: could not process ${basename(filePath)}: ${err.message}`);
           }
         }
-      } catch {
-        // Skip unreadable project directories
+      } catch (err) {
+        console.warn(`  Warning: could not read project directory ${proj.name}: ${err.message}`);
       }
     }
-  } catch {
-    // Skip unreadable workflows directory
+  } catch (err) {
+    console.warn(`  Warning: could not read workflows directory: ${err.message}`);
   }
 
   return { archived };
@@ -359,7 +367,7 @@ function loadConfig(projectRoot) {
         : 500,
     };
   } catch (err) {
-    console.log(
+    console.warn(
       `Warning: Could not parse memory-strategies.json: ${err.message}\n` +
       `Using default settings.`
     );
